@@ -26,8 +26,8 @@ class FlappyBirdServer:
         self.memory_size = 10000
         self.gamma = 0.95
         self.epsilon = 1.0
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
+        self.epsilon_min = 0.1
+        self.epsilon_decay = 0.999
         self.learning_rate = 0.001
 
         os.makedirs('models', exist_ok=True)
@@ -132,7 +132,7 @@ class FlappyBirdServer:
                 #print("  Es STATE")
                 state = np.array(data["state"], dtype=np.float32)
                 reward = data.get("reward", 0)
-                self.current_score=reward
+                self.current_score+=reward
                 print(f"  \n       Este es reward:   {reward} ")
                 done = data.get("done", False)
 
@@ -150,7 +150,7 @@ class FlappyBirdServer:
                 if done:
                     self.episode_end()
                 jason={"action":int(action)}
-                print("Data procesado")
+                print(f"Data procesado : {self.current_action}")
                 return json.dumps(jason)
 
 
@@ -165,6 +165,7 @@ class FlappyBirdServer:
             #print("Entra en IF")
             return random.randint(0, self.output_size - 1)
         else:
+            self.model.eval()
             with torch.no_grad():
                 state_tensor = torch.FloatTensor(state).unsqueeze(0)
                 q_values = self.model(state_tensor)
@@ -185,6 +186,7 @@ class FlappyBirdServer:
             print("----❌------------❌-------- Dejo de replayar sin entrar")
             return
 
+        self.model.train()
         batch = random.sample(self.memory, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
@@ -211,8 +213,7 @@ class FlappyBirdServer:
         self.optimizer.step()
 
 
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+
 
 
 
@@ -236,6 +237,8 @@ class FlappyBirdServer:
         self.current_state = None
         self.current_action = None
         self.current_score = 0
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
 
     def save_model(self, filename):
 
@@ -246,7 +249,8 @@ class FlappyBirdServer:
                 'epsilon': self.epsilon,
                 'scores': self.scores,
                 'episodes': self.episodes,
-                'max_score': self.max_score
+                'max_score': self.max_score,
+                'memory':self.memory
             }, filename)
             print(f"✅ Modelo guardado: {filename}")
         except Exception as e:
@@ -264,7 +268,10 @@ class FlappyBirdServer:
             self.episodes = checkpoint['episodes']
             self.max_score = checkpoint['max_score']
 
-            print(f"✅ Modelo cargado: {filename}")
+
+            if 'memory' in checkpoint:
+                self.memory = checkpoint['memory']
+            print(f"✅ Modelo cargado: {filename}  - con epsilon::: {self.epsilon}")
 
         except FileNotFoundError:
             print("⚠️  No se encontró modelo previo, empezando desde cero")
@@ -288,6 +295,7 @@ class DQN(nn.Module):
 
 
 def main():
+
     print("    FLAPPY BIRD AI - SERVIDOR DE ENTRENAMIENTO\n")
 
 
